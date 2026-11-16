@@ -1,76 +1,80 @@
 name: Build Windows
 
 on:
-    push:
-        branches:
-            - main
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
 
 permissions:
-    contents: read
+  contents: read
 
 jobs:
-    build:
-        name: Build Windows x64
-        runs-on: windows-2025
-        timeout-minutes: 30
-        defaults:
-            run:
-                working-directory: hardware_rental
-        steps:
-            - name: Check out source
-              uses: actions/checkout@v6
+  build:
+    name: Build Windows x64
+    runs-on: windows-2025
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: hardware_rental
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
 
-            - name: Set up Flutter
-              uses: subosito/flutter-action@v2
-              with:
-                  channel: stable
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
 
-            - name: Resolve dependencies
-              run: flutter pub get
+      - name: Resolve dependencies
+        run: flutter pub get
 
-            - name: Run tests
-              run: flutter test
+      - name: Run tests
+        run: flutter test
 
-            - name: Build Windows release
-              run: flutter build windows --release --no-pub
+      - name: Build Windows release
+        run: flutter build windows --release --no-pub
 
-            - name: Verify release layout
-              shell: pwsh
-              run: |
-                  $bundle = 'build/windows/x64/runner/Release'
-                  foreach ($file in @('hardware_rental.exe', 'flutter_windows.dll', 'data/flutter_assets')) {
-                    if (-not (Test-Path (Join-Path $bundle $file))) {
-                      throw "Missing Windows release file or directory: $file"
-                    }
-                  }
+      - name: Verify release layout
+        shell: pwsh
+        run: |
+          $bundle = 'build/windows/x64/runner/Release'
+          foreach ($file in @('hardware_rental.exe', 'flutter_windows.dll', 'data/flutter_assets')) {
+            if (-not (Test-Path (Join-Path $bundle $file))) {
+              throw "Missing Windows release file or directory: $file"
+            }
+          }
 
-            - name: Upload Windows bundle
-              uses: actions/upload-artifact@v4
-              with:
-                  name: hardware-rental-windows-x64
-                  path: hardware_rental/build/windows/x64/runner/Release/
-                  if-no-files-found: error
+      - name: Upload Windows bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: hardware-rental-windows-x64
+          path: hardware_rental/build/windows/x64/runner/Release/
+          if-no-files-found: error
 
-    release:
-        name: Publish tagged release
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-        needs: build
-        runs-on: windows-2025
-        permissions:
-            contents: write
-        steps:
-            - name: Download Windows bundle
-              uses: actions/download-artifact@v4
-              with:
-                  name: hardware-rental-windows-x64
-                  path: windows-bundle
+  release:
+    name: Publish tagged release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: windows-2025
+    permissions:
+      contents: write
+    steps:
+      - name: Download Windows bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: hardware-rental-windows-x64
+          path: windows-bundle
 
-            - name: Create GitHub Release
-              shell: pwsh
-              env:
-                  GH_TOKEN: ${{ github.token }}
-                  GH_REPO: ${{ github.repository }}
-              run: |
-                  $zip = 'hardware-rental-windows-x64.zip'
-                  Compress-Archive -Path 'windows-bundle/*' -DestinationPath $zip
-                  gh release create "$env:GITHUB_REF_NAME" "$zip" --verify-tag --generate-notes
+      - name: Create GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          $zip = 'hardware-rental-windows-x64.zip'
+          Compress-Archive -Path 'windows-bundle/*' -DestinationPath $zip
+          gh release create "$env:GITHUB_REF_NAME" "$zip" --verify-tag --generate-notes
